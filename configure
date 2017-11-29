@@ -1310,6 +1310,8 @@ echo "Creating src/Makefile"
 cp src/Makefile.in src/Makefile
 echo "Creating src/replacements/Makefile"
 cp src/replacements/Makefile.in src/replacements/Makefile
+echo "Creating src/tds/Makefile"
+cp src/tds/Makefile.in src/tds/Makefile
 
 echo
 echo "Configuration:"
