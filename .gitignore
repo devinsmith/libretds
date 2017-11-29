@@ -50,3 +50,10 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Generated files
+Makefile
+libretds-config
+config.mak
+include/config.h
+include/tds_sysdep_public.h

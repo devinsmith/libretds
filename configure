@@ -1,0 +1,1320 @@
+#!/bin/sh
+#
+# libretds: fork of the popular freetds.
+# configure script
+# Copyright (c) Devin Smith 2009-2017
+#
+# This script is based on various scripts from other open source projects.
+# Major portions are straight from qemu, ffmpeg, and gxemul.
+
+###############################################################################
+# default parameters
+PREFIX="/usr/local"
+LIBRETDS_VERSION="1.0.0"
+LIBRETDS_MAJOR="1"
+LIBRETDS_MINOR="0"
+
+###############################################################################
+# Check for command line arguments
+for arg in $*; do
+optarg=`echo $arg | sed 's/[-a-z]*=//'`
+case $arg in
+    --prefix=*)
+      PREFIX="$optarg"
+      ;;
+    --disable-threadsafe)
+      threadsafe=no
+      ;;
+    *)
+      echo "libretds build configuration script"
+      echo
+      echo "Target directories:"
+      echo " --prefix=PREFIX        path to install to"
+      echo " --disable-threadsafe   disable thread safety"
+      echo
+      exit 1
+      ;;
+esac
+done
+
+LIBDIR="${PREFIX}/lib"
+MACH=`uname -m`
+
+# Some 64 bit versions of Linux have the 64 bit libraries stored in /lib64
+if [ "$MACH" = "x86_64" ]; then
+	LIBDIR="${PREFIX}/lib64"
+fi
+
+printf "checking for valid C compiler... "
+
+# Try with the simplest possible test program. Actually, test static
+# variables as well, because GXemul uses things like NULL-initialized global
+# pointers, and it is important that they work. (GCC on Solaris is known to
+# be completely broken, for instance.)
+
+echo '#include <stdio.h>
+
+int main(int argc, char *argv[])
+{
+  static int x = 0;
+  static int y = 1;
+  printf("%i,%i", x, y);
+  return 0;
+}
+' > _testprog.c
+
+if [ z"$CC" = z ]; then
+  CC=cc
+fi
+
+if $CC $CFLAGS -c -o _testprog _testprog.c > /dev/null 2> /dev/null ; then
+  : C compiler works ok
+else
+  # try gcc
+  CC=gcc
+  if $CC $CFLAGS -c -o _testprog _testprog.c > /dev/null 2> /dev/null ; then
+    : C compiler works ok
+  else
+    echo "ERROR: \"$CC\" either does not exist or does not work"
+    rm -f _testprog*
+    exit 1
+  fi
+fi
+rm -f _testprog*
+
+printf "$CC\n"
+
+####
+# Create config.h
+#  Head of config.h:
+printf "/*
+ *  THIS FILE IS AUTOMATICALLY CREATED BY configure!
+ *  DON'T EDIT THIS FILE MANUALLY, IT WILL BE OVERWRITTEN.
+ */
+\n" > config.h
+
+printf "#define VERSION \"$LIBRETDS_VERSION\"\n" >> config.h
+printf "#define TDS50 1\n" >> config.h
+## Maybe need a better test for this using __alignof and tests for long and
+# double
+printf "#define MAXIMUM_ALIGNOF 8\n" >> config.h
+
+printf "
+/* Enable GNU extensions on systems that have them.  */
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE 1
+#endif\n\n" >> config.h
+
+# Check the size of certain types
+echo '#include <stdio.h>
+int main(void)
+{
+  printf("%d", sizeof(long));
+  return (0);
+}
+' > _testsize.c
+$CC $CFLAGS _testsize.c -o _testsize 2> /dev/null
+if [ -x _testsize ]; then
+  conf_sizeof_long=`./_testsize`
+else
+  conf_sizeof_long=0
+fi
+rm -f _testsize*
+
+echo '#include <stdio.h>
+int main(void)
+{
+  printf("%d", sizeof(long long));
+  return (0);
+}
+' > _testsize.c
+$CC $CFLAGS _testsize.c -o _testsize 2> /dev/null
+if [ -x _testsize ]; then
+  conf_sizeof_long_long=`./_testsize`
+else
+  conf_sizeof_long_long=0
+fi
+rm -f _testsize*
+
+echo '#include <stdio.h>
+int main(void)
+{
+  printf("%d", sizeof(__int64));
+  return (0);
+}
+' > _testsize.c
+$CC $CFLAGS _testsize.c -o _testsize 2> /dev/null
+if [ -x _testsize ]; then
+  conf_sizeof___int64=`./_testsize`
+else
+  conf_sizeof___int64=0
+fi
+rm -f _testsize*
+
+case 8 in
+$conf_sizeof_long)  tds_sysdep_int64_type=long;;
+$conf_sizeof_long_long) tds_sysdep_int64_type="long long";;
+$conf_sizeof___int64) tds_sysdep_int64_type=__int64;;
+esac
+
+if test "$tds_sysdep_int64_type"; then
+
+  tds_i64_format=
+echo '
+#if !defined(__MINGW32__) || !defined(__MSVCRT__)
+this should produce an error!
+#endif
+
+int main(void)
+{
+  return (0);
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+  tds_i64_format="I64d"
+fi
+rm -f _testprog*
+
+if test "x$conf_sizeof_long" = "x8"; then
+  tds_i64_format=ld
+fi
+
+if test "x$tds_i64_format" = "x"; then
+echo '#include <stdlib.h>
+
+#if !defined(__GLIBC__) || __GLIBC__ < 2 || !defined(__GLIBC_MINOR__) || __GLIBC_MINOR__ < 2
+#error no proper glibc
+#endif
+
+int main(void)
+{
+  char buf[64];
+  long long ll = atoll(buf);
+  return (0);
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+  tds_i64_format="lld"
+fi
+rm -f _testprog*
+fi
+
+if test "x$tds_i64_format" = "x"; then
+  for arg in l ll I64 L; do
+    echo "#include <stdio.h>
+#include <stdlib.h>
+
+int main(void)
+{
+  char buf[20];
+  $tds_sysdep_int64_type ll = ((($tds_sysdep_int64_type) 0x12345) << 32) + 0x6789abcd;
+  sprintf(buf, \"%${arg}d\", ll);
+  return strcmp(buf, \"320255973501901\") != 0;
+}
+" > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+  X=`./_testprog`
+  X_status=$?
+  if [ $X_status -eq 0 ]; then
+    tds_i64_format="${arg}d"
+    break;
+  fi
+fi
+rm -f _testprog*
+
+  done
+fi
+
+if test "x$tds_i64_format" != "x"; then
+printf "#define TDS_I64_FORMAT \"$tds_i64_format\"\n" >> config.h
+fi
+
+else
+  tds_sysdep_int64_type=long
+  echo "WARNING: SQL Server 2000 \"bigint\" 8-byte integer will not work"
+fi # sysdep_int64 type
+
+# Check for a bunch of header files
+for ac_header in sys/types.h sys/stat.h stdlib.h string.h \
+  inttypes.h stdint.h unistd.h stdbool.h
+do
+printf "checking for $ac_header... "
+echo "
+#include <$ac_header>
+int main(void)
+{ return 0; }
+" > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+  printf "yes\n";
+  printf "#define " >> config.h
+  echo "HAVE_$ac_header 1" | tr [a-z./] [A-Z__] >> config.h
+else
+  printf "no\n";
+fi
+rm -f _testprog*
+done
+
+# Check size of long.
+printf "checking size of long... "
+echo '#include <stdio.h>
+int main(void)
+{
+  printf("%d", sizeof(long));
+  return (0);
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+X=`./_testprog`
+printf "$X\n"
+printf "#define SIZEOF_LONG $X\n" >> config.h
+rm -f _testprog*
+
+# Check size of int.
+printf "checking size of int... "
+echo '#include <stdio.h>
+int main(void)
+{
+  printf("%d", sizeof(int));
+  return (0);
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+X=`./_testprog`
+printf "$X\n"
+printf "#define SIZEOF_INT $X\n" >> config.h
+rm -f _testprog*
+
+# Check size of void *.
+printf "checking size of void *... "
+echo '#include <stdio.h>
+int main(void)
+{
+  printf("%d", sizeof(void *));
+  return (0);
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+X=`./_testprog`
+printf "$X\n"
+printf "#define SIZEOF_VOID_P $X\n" >> config.h
+
+case $X in
+8)  tds_sysdep_intptr_type=long;;
+*)  tds_sysdep_intptr_type=int;;
+esac
+
+rm -f _testprog*
+
+# Check for a bunch of header files
+for ac_header in errno.h \
+  limits.h \
+  locale.h \
+  poll.h \
+  signal.h \
+  stddef.h \
+  sys/param.h \
+  sys/select.h \
+  sys/time.h \
+  sys/resource.h \
+  sys/wait.h \
+  sys/ioctl.h \
+  sys/socket.h \
+  wchar.h
+do
+printf "checking for $ac_header... "
+echo "
+#include \"config.h\"
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#include <$ac_header>
+int main(void)
+{ return 0; }
+" > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+  printf "yes\n";
+  printf "#define " >> config.h
+  echo "HAVE_$ac_header 1" | tr [a-z./] [A-Z__] >> config.h
+else
+  printf "no\n";
+fi
+rm -f _testprog*
+done
+
+# Check for a bunch of header files
+for ac_header in arpa/inet.h \
+  langinfo.h \
+  netdb.h \
+  netinet/in.h \
+  netinet/tcp.h \
+  paths.h
+do
+printf "checking for $ac_header... "
+if [ -e /usr/include/$ac_header ]; then
+  printf "yes\n";
+  printf "#define " >> config.h
+  echo "HAVE_$ac_header 1" | tr [a-z./] [A-Z__] >> config.h
+else
+  printf "no\n";
+fi
+rm -f _testprog*
+done
+
+# Check if we have INADDR_NONE defined
+printf "checking whether INADDR_NONE is defined... "
+echo '
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+ /* end includes */
+int
+main(void)
+{
+  unsigned long foo = INADDR_NONE; /* our test code */
+  ;
+  return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+  printf "yes\n";
+else
+  printf "no\n";
+  printf "#define INADDR_NONE 0xffffffff\n" >> config.h
+fi
+rm -f _testprog*
+
+if test "x$threadsafe" = "xno" ; then
+  printf "Disabling thread safety\n"
+  printf "#define TDS_NO_THREADSAFE 1\n" >> config.h
+fi
+
+# network library functions
+for ac_func in inet_ntoa_r getipnodebyaddr getipnodebyname \
+getaddrinfo getnameinfo inet_ntop gethostname poll
+do
+printf "checking for $ac_func... "
+echo "
+/* Define $ac_func to an innocuous variant, in case <limits.h> declares $ac_func.
+   For example, HP-UX 11i <limits.h> declares gettimeofday.  */
+#define $ac_func innocuous_$ac_func
+
+/* System header to define __stub macros and hopefully few prototypes,
+   which can conflict with char $ac_func (); below.
+   Prefer <limits.h> to <assert.h> if __STDC__ is defined, since
+   <limits.h> exists even on freestanding compilers.  */
+
+#ifdef __STDC__
+# include <limits.h>
+#else
+# include <assert.h>
+#endif
+
+#undef $ac_func
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+   char $ac_func ();
+/* The GNU C library defines this for functions which it implements
+   to always fail with ENOSYS.  Some functions are actually named
+   something starting with __ and the normal name is an alias.  */
+#if defined (__stub_$ac_func) || defined (__stub___$ac_func)
+choke me
+#else
+char (*f) () = $ac_func;
+#endif
+#ifdef __cplusplus
+}
+#endif
+
+int
+main (void)
+{
+  return f != $ac_func;
+  ;
+  return 0;
+}
+" > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+  printf "yes\n";
+  printf "#define " >> config.h
+  echo "HAVE_$ac_func 1" | tr [a-z] [A-Z] >> config.h
+else
+  printf "no\n";
+fi
+rm -f _testprog*
+done
+
+# library functions
+for ac_func in asprintf vasprintf atoll strtok_r \
+strlcpy arc4random_buf
+do
+printf "checking for $ac_func... "
+echo "
+/* Define $ac_func to an innocuous variant, in case <limits.h> declares $ac_func.
+   For example, HP-UX 11i <limits.h> declares gettimeofday.  */
+#define $ac_func innocuous_$ac_func
+
+/* System header to define __stub macros and hopefully few prototypes,
+   which can conflict with char $ac_func (); below.
+   Prefer <limits.h> to <assert.h> if __STDC__ is defined, since
+   <limits.h> exists even on freestanding compilers.  */
+
+#ifdef __STDC__
+# include <limits.h>
+#else
+# include <assert.h>
+#endif
+
+#undef $ac_func
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+   char $ac_func ();
+/* The GNU C library defines this for functions which it implements
+   to always fail with ENOSYS.  Some functions are actually named
+   something starting with __ and the normal name is an alias.  */
+#if defined (__stub_$ac_func) || defined (__stub___$ac_func)
+choke me
+#else
+char (*f) () = $ac_func;
+#endif
+#ifdef __cplusplus
+}
+#endif
+
+int
+main (void)
+{
+  return f != $ac_func;
+  ;
+  return 0;
+}
+" > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+  printf "yes\n";
+  printf "#define " >> config.h
+  echo "HAVE_$ac_func 1" | tr [a-z] [A-Z] >> config.h
+else
+  printf "no\n";
+fi
+rm -f _testprog*
+done
+
+# extra library functions
+for ac_func in _vsnprintf gettimeofday putenv localtime_r \
+	_lseeki64 _telli64 _fseeki64 _ftelli64
+do
+printf "checking for $ac_func... "
+echo "
+/* Define $ac_func to an innocuous variant, in case <limits.h> declares $ac_func.
+   For example, HP-UX 11i <limits.h> declares gettimeofday.  */
+#define $ac_func innocuous_$ac_func
+
+/* System header to define __stub macros and hopefully few prototypes,
+   which can conflict with char $ac_func (); below.
+   Prefer <limits.h> to <assert.h> if __STDC__ is defined, since
+   <limits.h> exists even on freestanding compilers.  */
+
+#ifdef __STDC__
+# include <limits.h>
+#else
+# include <assert.h>
+#endif
+
+#undef $ac_func
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+   char $ac_func ();
+/* The GNU C library defines this for functions which it implements
+   to always fail with ENOSYS.  Some functions are actually named
+   something starting with __ and the normal name is an alias.  */
+#if defined (__stub_$ac_func) || defined (__stub___$ac_func)
+choke me
+#else
+char (*f) () = $ac_func;
+#endif
+#ifdef __cplusplus
+}
+#endif
+
+int
+main (void)
+{
+  return f != $ac_func;
+  ;
+  return 0;
+}
+" > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+  printf "yes\n";
+  printf "#define " >> config.h
+  echo "HAVE_$ac_func 1" | tr [a-z] [A-Z] >> config.h
+else
+  printf "no\n";
+fi
+rm -f _testprog*
+done
+
+printf "checking for which type of localtime_r... "
+echo '#include <unistd.h>
+#include <time.h>
+int
+main (void)
+{
+	struct tm mytm;
+	time_t t;
+	int y = localtime_r(&t, &mytm)->tm_year;
+	;
+	return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "struct\n"
+	printf "#define HAVE_FUNC_LOCALTIME_R_TM 1\n" >> config.h
+else
+	printf "int\n"
+	printf "#define HAVE_FUNC_LOCALTIME_R_INT 1\n" >> config.h
+fi
+rm -f _testprog*
+
+printf "checking for struct sockaddr_storage... "
+echo '#include <sys/types.h>
+#include <sys/socket.h>
+int
+main (void)
+{
+	struct sockaddr_storage ss;
+	;
+	return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define HAVE_STRUCT_SOCKADDR_STORAGE 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking for gai_strerror... "
+echo '
+/* Define gai_strerror to an innocuous variant, in case <limits.h> declares gai_strerror.
+   For example, HP-UX 11i <limits.h> declares gettimeofday.  */
+#define gai_strerror innocuous_gai_strerror
+
+/* System header to define __stub macros and hopefully few prototypes,
+    which can conflict with char gai_strerror (); below.
+    Prefer <limits.h> to <assert.h> if __STDC__ is defined, since
+    <limits.h> exists even on freestanding compilers.  */
+
+#ifdef __STDC__
+# include <limits.h>
+#else
+# include <assert.h>
+#endif
+
+#undef gai_strerror
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char gai_strerror ();
+/* The GNU C library defines this for functions which it implements
+    to always fail with ENOSYS.  Some functions are actually named
+    something starting with __ and the normal name is an alias.  */
+#if defined (__stub_gai_strerror) || defined (__stub___gai_strerror)
+choke me
+#else
+char (*f) () = gai_strerror;
+#endif
+#ifdef __cplusplus
+}
+#endif
+
+int
+main ()
+{
+return f != gai_strerror;
+  ;
+  return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define HAVE_GAI_STRERROR 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking for freeaddrinfo... "
+echo '
+/* Define freeaddrinfo to an innocuous variant, in case <limits.h> declares freeaddrinfo.
+   For example, HP-UX 11i <limits.h> declares gettimeofday.  */
+#define freeaddrinfo innocuous_freeaddrinfo
+
+/* System header to define __stub macros and hopefully few prototypes,
+    which can conflict with char freeaddrinfo (); below.
+    Prefer <limits.h> to <assert.h> if __STDC__ is defined, since
+    <limits.h> exists even on freestanding compilers.  */
+
+#ifdef __STDC__
+# include <limits.h>
+#else
+# include <assert.h>
+#endif
+
+#undef freeaddrinfo
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char freeaddrinfo ();
+/* The GNU C library defines this for functions which it implements
+    to always fail with ENOSYS.  Some functions are actually named
+    something starting with __ and the normal name is an alias.  */
+#if defined (__stub_freeaddrinfo) || defined (__stub___freeaddrinfo)
+choke me
+#else
+char (*f) () = freeaddrinfo;
+#endif
+#ifdef __cplusplus
+}
+#endif
+
+int
+main ()
+{
+return f != freeaddrinfo;
+  ;
+  return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define HAVE_FREEADDRINFO 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking for inet_ntop... "
+echo '
+/* Define inet_ntop to an innocuous variant, in case <limits.h> declares inet_ntop.
+   For example, HP-UX 11i <limits.h> declares gettimeofday.  */
+#define inet_ntop innocuous_inet_ntop
+
+/* System header to define __stub macros and hopefully few prototypes,
+    which can conflict with char inet_ntop (); below.
+    Prefer <limits.h> to <assert.h> if __STDC__ is defined, since
+    <limits.h> exists even on freestanding compilers.  */
+
+#ifdef __STDC__
+# include <limits.h>
+#else
+# include <assert.h>
+#endif
+
+#undef inet_ntop
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char inet_ntop ();
+/* The GNU C library defines this for functions which it implements
+    to always fail with ENOSYS.  Some functions are actually named
+    something starting with __ and the normal name is an alias.  */
+#if defined (__stub_inet_ntop) || defined (__stub___inet_ntop)
+choke me
+#else
+char (*f) () = inet_ntop;
+#endif
+#ifdef __cplusplus
+}
+#endif
+
+int
+main ()
+{
+return f != inet_ntop;
+  ;
+  return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define HAVE_INET_NTOP 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+conf_func_clock_gettime=no
+printf "checking for library containing clock_gettime... "
+echo '
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char clock_gettime ();
+int
+main ()
+{
+clock_gettime ();
+  ;
+  return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+  conf_func_clock_gettime="none required"
+	printf "$conf_func_clock_gettime\n"
+fi
+# If clock_gettime still not found we should check the rt and posix4 library
+if test "$conf_func_clock_gettime" = no; then
+  for conf_lib in rt posix4; do
+  $CC $CFLAGS _testprog.c -o _testprog -l$conf_lib 2> /dev/null
+  if [ -x _testprog ]; then
+    conf_func_clock_gettime=$conf_lib
+    printf "$conf_lib\n"
+    break
+  fi
+  done
+fi
+rm -f _testprog*
+
+if test "$conf_func_clock_gettime" = no; then
+  printf "not supported\n";
+else
+	printf "#define HAVE_CLOCK_GETTIME 1\n" >> config.h
+  for conf_clock_gettime_mode in CLOCK_MONOTONIC CLOCK_SGI_CYCLE CLOCK_REALTIME; do
+    printf "checking if clock_gettime supports $conf_clock_gettime_mode... "
+echo "
+#include \"config.h\"
+#include <time.h>
+#ifdef HAVE_SYS_TIME_H
+#include <sys/time.h>
+#endif
+
+int
+main ()
+{
+  struct timespec ts; clock_gettime($conf_clock_gettime_mode, &ts);
+  ;
+  return 0;
+}
+" > _testprog.c
+if test "$conf_func_clock_gettime" = "none required"; then
+  $CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+else
+  $CC $CFLAGS _testprog.c -o _testprog -l$conf_func_clock_gettime 2> /dev/null
+fi
+if [ -x _testprog ]; then
+  printf "yes\n"
+  printf "#define TDS_GETTIMEMILLI_CONST $conf_clock_gettime_mode\n" >> config.h
+  break;
+fi
+  done
+fi
+rm -f _testprog*
+
+printf "checking for strsep... "
+echo '
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char strsep ();
+int
+main ()
+{
+strsep ();
+  ;
+  return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define HAVE_STRSEP 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking for struct addrinfo... "
+echo '#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+int
+main (void)
+{
+	struct addrinfo a;
+	;
+	return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define HAVE_STRUCT_ADDRINFO 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking for struct in6_addr... "
+echo '#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+int
+main (void)
+{
+	struct in6_addr in6;
+	;
+	return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define HAVE_STRUCT_IN6_ADDR 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking for struct sockaddr_in6... "
+echo '#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+int
+main (void)
+{
+	struct sockaddr_in6 sa_in6;
+	;
+	return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define HAVE_STRUCT_SOCKADDR_IN6 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking for termios.h... "
+echo '
+#include <termios.h>
+int
+main (void)
+{
+	tcdrain(0);
+	return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define HAVE_TERMIOS_H 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking for sys/termios.h... "
+echo '
+#include <sys/termios.h>
+int
+main (void)
+{
+	tcdrain(0);
+	return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define HAVE_SYS_TERMIOS_H 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking for vsnprintf... "
+echo '
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char vsnprintf ();
+int
+main ()
+{
+vsnprintf ();
+  ;
+  return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define HAVE_VSNPRINTF 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking if compiler has __attribute__((destructor))... "
+echo '
+static void __attribute__((destructor)) my_uninit(void) {}
+int
+main ()
+{
+  ;
+  return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define TDS_ATTRIBUTE_DESTRUCTOR 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking if our time comes from <sys/time.h>... "
+echo '
+#include <sys/types.h>
+#include <sys/time.h>
+#include <time.h>
+
+int
+main ()
+{
+  if ((struct tm *) 0)
+    return 0;
+  return 0;
+}
+' > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	printf "yes\n"
+	printf "#define TIME_WITH_SYS_TIME 1\n" >> config.h
+else
+	printf "no\n"
+fi
+rm -f _testprog*
+
+printf "checking for socklen_t... "
+echo "
+#include \"config.h\"
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#elif defined(HAVE_SYS_SOCKET_H)
+#include <sys/socket.h>
+#endif
+
+int
+main ()
+{
+  if ((socklen_t *) 0)
+    return 0;
+  if (sizeof(socklen_t))
+    return 0;
+
+  return 0;
+}
+" > _testprog.c
+$CC $CFLAGS _testprog.c -o _testprog 2> /dev/null
+if [ -x _testprog ]; then
+	cv_type_socklen_t=yes
+	printf "yes\n"
+else
+	cv_type_socklen_t=no
+	printf "no\n"
+fi
+rm -f _testprog*
+
+if test "$cv_type_socklen_t" = no; then
+  printf "checking for socklen_t equivalent... "
+	# Systems have either "struct sockaddr *" or "void *"
+	# as the second argument to getpeername.
+	xml_cv_socklen_t_equiv=
+	for arg2 in "struct sockaddr" void; do
+		for t in char int size_t unsigned long "unsigned long"; do
+			echo "#include \"config.h\"
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef WIN32
+#include <winsock2.h>
+#elif defined(HAVE_SYS_SOCKET_H)
+#include <sys/socket.h>
+int getpeername (int, $arg2 *, $t *);
+#endif
+
+int main(void)
+{
+  $t len;
+  getpeername(0, 0, &len);
+  return 0;
+}
+" > _testprog.c
+$CC $CFLAGS -Werror -c _testprog.c -o _testprog.o 2> /dev/null
+if [ -e _testprog.o ]; then
+  socklen_t_equiv="$t"
+  rm -f _testprog*
+  break;
+fi
+rm -f _testprog*
+done
+done
+
+if test "x$socklen_t_equiv" = x; then
+  echo "Couldn't find equivlent socklen_t type";
+  exit 1;
+fi
+
+printf "$t\n"
+printf "/* type to use in place of socklen_t if not defined */\n" >> config.h
+printf "#define socklen_t $t\n" >> config.h
+rm -f _testprog*
+fi
+
+mv config.h include
+
+# Build include/tds_sysdep_public.h
+echo "Creating include/tds_sysdep_public.h"
+echo '
+/* FreeTDS - Library of routines accessing Sybase and Microsoft databases
+ * Copyright (C) 1998-2011  Brian Bruns
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Library General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Library General Public License for more details.
+ *
+ * You should have received a copy of the GNU Library General Public
+ * License along with this library; if not, write to the
+ * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+ * Boston, MA 02111-1307, USA.
+ */
+
+/* This file is automatically generated */
+
+#ifndef _tds_sysdep_public_h_
+#define _tds_sysdep_public_h_
+
+/* $Id: tds_sysdep_public.h.in,v 1.15 2011-08-08 07:27:57 freddy77 Exp $ */
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+/*
+** This is where platform-specific changes need to be made.
+*/
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#define tds_sysdep_int16_type short	/* 16-bit int */
+#define tds_sysdep_int32_type int	/* 32-bit int */
+#define tds_sysdep_int64_type __int64	/* 64-bit int */
+#define tds_sysdep_real32_type float	/* 32-bit real */
+#define tds_sysdep_real64_type double	/* 64-bit real */
+#if !defined(WIN64) && !defined(_WIN64)
+#define tds_sysdep_intptr_type int      /* 32-bit int */
+#else
+#define tds_sysdep_intptr_type __int64  /* 64-bit int */
+#endif
+#endif				/* defined(WIN32) || defined(_WIN32) || defined(__WIN32__) */
+
+#ifndef tds_sysdep_int16_type
+#define tds_sysdep_int16_type short	/* 16-bit int */
+#endif				/* !tds_sysdep_int16_type */
+
+#ifndef tds_sysdep_int32_type
+#define tds_sysdep_int32_type int	/* 32-bit int */
+#endif				/* !tds_sysdep_int32_type */
+
+#ifndef tds_sysdep_int64_type' > include/tds_sysdep_public.h
+echo "#define tds_sysdep_int64_type $tds_sysdep_int64_type /* 64-bit int */" >> include/tds_sysdep_public.h
+echo '
+#endif				/* !tds_sysdep_int64_type */
+
+#ifndef tds_sysdep_real32_type
+#define tds_sysdep_real32_type float	/* 32-bit real */
+#endif				/* !tds_sysdep_real32_type */
+
+#ifndef tds_sysdep_real64_type
+#define tds_sysdep_real64_type double	/* 64-bit real */
+#endif				/* !tds_sysdep_real64_type */
+
+#ifndef tds_sysdep_intptr_type' >> include/tds_sysdep_public.h
+echo "#define tds_sysdep_intptr_type $tds_sysdep_intptr_type" >> include/tds_sysdep_public.h
+echo '
+#endif				/* !tds_sysdep_intptr_type */
+
+#if !defined(MSDBLIB) && !defined(SYBDBLIB)
+#define SYBDBLIB 1
+#endif
+#if defined(MSDBLIB) && defined(SYBDBLIB)
+#error MSDBLIB and SYBDBLIB cannot both be defined
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif				/* _tds_sysdep_public_h_ */
+
+' >> include/tds_sysdep_public.h
+
+###############################################################################
+# Generate libretds-config file
+echo "Creating libretds-config file"
+sed -e "s/@LIBRETDS_VERSION@/${LIBRETDS_VERSION}/g" \
+	-e "s/@LIBRETDS_MAJOR@/${LIBRETDS_MAJOR}/g" \
+	-e "s/@LIBRETDS_MINOR@/${LIBRETDS_MINOR}/g" \
+	-e "s|@prefix@|${PREFIX}|g" \
+	-e "s|@libdir@|${LIBDIR}|g" \
+	-e "s|@includedir@|${PREFIX}/include|g" libretds-config.in > libretds-config
+chmod +x ./libretds-config
+
+###############################################################################
+# Build the config.mak file
+echo "# Generated by $0 $*" > config.mak
+echo >> config.mak
+echo "PREFIX=${PREFIX}" >> config.mak
+echo "CC=${CC}" >> config.mak
+echo >> config.mak
+
+# Build the top level Makefile
+echo "Creating Makefile"
+echo '# libretds master makefile
+
+PREFIX = /usr/local
+INSTALL_DATA = install -c -m 0644
+
+include config.mak
+
+LIBDIR = $(PREFIX)/lib
+
+MACHINE := $(shell uname -m)
+
+ifeq ($(MACHINE), x86_64)
+	LIBDIR = $(PREFIX)/lib64
+endif
+
+all:
+	@(cd src && $(MAKE))
+
+clean:
+	@(cd src && $(MAKE) clean)
+
+package:
+	$(MAKE) install DESTDIR=`pwd`/libretds-1.0.0
+	tar -zcvf libretds-1.0.0.tar.gz libretds-1.0.0/
+
+install:
+	install -d -m 0755 $(DESTDIR)$(PREFIX)/bin
+	install -d -m 0755 $(DESTDIR)$(LIBDIR)
+	install -d -m 0755 $(DESTDIR)$(PREFIX)/include/libretds/
+	install -c -m 0555 libretds-config $(DESTDIR)$(PREFIX)/bin/
+	$(INSTALL_DATA) include/database.h $(DESTDIR)$(PREFIX)/include/libretds/
+	$(INSTALL_DATA) include/sybdb.h $(DESTDIR)$(PREFIX)/include/libretds/
+	$(INSTALL_DATA) include/sybdk.h $(DESTDIR)$(PREFIX)/include/libretds/
+	$(INSTALL_DATA) include/tds_sysdep_public.h $(DESTDIR)$(PREFIX)/include/libretds/
+	libtool --mode=install cp src/dkdblib/libretds.la $(DESTDIR)$(LIBDIR)/libretds.la
+' > Makefile
+
+echo "Creating src/Makefile"
+cp src/Makefile.in src/Makefile
+echo "Creating src/replacements/Makefile"
+cp src/replacements/Makefile.in src/replacements/Makefile
+
+echo
+echo "Configuration:"
+echo "  Install to: ${PREFIX}"
+echo
+echo "Now type: make (or gmake on a BSD system)"
+echo
+

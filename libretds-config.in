@@ -1,0 +1,79 @@
+#! /bin/sh
+
+# libretds-config
+# provides configuration info for libretds.
+
+# Copyright (C) 2015 Devin Smith
+
+# Modeled after libxml-config.
+
+version="@LIBRETDS_VERSION@"
+prefix="@prefix@"
+libdir="@libdir@"
+includedir="@includedir@/libretds"
+libs="-lretds"
+all_libs="-lretds"
+I_opts="-I${includedir}"
+L_opts="-L${libdir}"
+
+usage()
+{
+    cat <<EOF
+Usage: $0 [OPTION] ...
+
+Known values for OPTION are:
+
+  --prefix        print libdkdblib prefix
+  --libdir        print path to directory containing library
+  --libs          print library linking information
+  --cflags        print preprocessor flags, I_opts, and compiler options
+  --ldopts        print linker options
+  --ldflags       print linker flags (ldopts, L_opts, R_opts, and libs)
+  --help          print this help and exit
+  --version       print version information
+EOF
+
+    exit $1
+}
+
+if test $# -eq 0; then
+    usage 1
+fi
+
+while test $# -gt 0; do
+    case "$1" in
+
+    --prefix)
+        echo ${prefix}
+        ;;
+
+    --version)
+        echo ${version}
+        exit 0
+        ;;
+
+    --help)
+        usage 0
+        ;;
+
+    --cflags)
+        echo ${I_opts} ${cppflags} ${ccopts}
+        ;;
+
+    --libs)
+        echo ${libs}
+        ;;
+
+    --ldflags)
+        echo ${ldopts} ${L_opts} ${R_opts} ${libs}
+        ;;
+
+    *)
+        usage
+        exit 1
+        ;;
+    esac
+    shift
+done
+
+exit 0

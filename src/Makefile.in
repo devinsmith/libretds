@@ -1,0 +1,15 @@
+# libretds Master makefile
+
+all:
+	@(cd replacements && $(MAKE))
+	@(cd tds && $(MAKE))
+	@(cd libretds && $(MAKE))
+
+clean:
+	@(cd replacements && $(MAKE) clean)
+	@(cd tds && $(MAKE) clean)
+	@(cd libretds && $(MAKE) clean)
+
+install:
+	@(cd replacements && $(MAKE) install)
+
