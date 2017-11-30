@@ -31,9 +31,6 @@
 #include <freetds/convert.h>
 #include <tdsbytes.h>
 #include <stdlib.h>
-#ifdef DMALLOC
-#include <dmalloc.h>
-#endif
 
 /**
  * tds_numeric_bytes_per_prec is indexed by precision and will
@@ -87,11 +84,7 @@ tds_money_to_string(const TDS_MONEY * money, char *s)
 	frac = (int) (n % 100);
 	n /= 100;
 	/* if machine is 64 bit you do not need to split n */
-#ifdef _MSC_VER
-	sprintf(p, "%I64d.%02d", n, frac);
-#else
 	sprintf(p, "%" PRId64 ".%02d", n, frac);
-#endif
 	return s;
 }
 

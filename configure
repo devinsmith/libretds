@@ -1312,6 +1312,8 @@ echo "Creating src/replacements/Makefile"
 cp src/replacements/Makefile.in src/replacements/Makefile
 echo "Creating src/tds/Makefile"
 cp src/tds/Makefile.in src/tds/Makefile
+echo "Creating src/libretds/Makefile"
+cp src/libretds/Makefile.in src/libretds/Makefile
 
 echo
 echo "Configuration:"

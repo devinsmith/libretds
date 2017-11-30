@@ -61,15 +61,9 @@
 
 #include <gssapi/gssapi_krb5.h>
 
-#include "tds.h"
-#include "tdsstring.h"
+#include <freetds/tds.h>
+#include <freetds/string.h>
 #include "replacements.h"
-
-#ifdef DMALLOC
-#include <dmalloc.h>
-#endif
-
-TDS_RCSID(var, "$Id: gssapi.c,v 1.25 2011-11-07 09:56:24 freddy77 Exp $");
 
 /**
  * \ingroup libtds
@@ -136,7 +130,7 @@ tds_gss_handle_next(TDSSOCKET * tds, struct tds_authentication * auth, size_t le
 	}
 
 	recv_tok.length = len;
-	recv_tok.value = (char* ) malloc(len);
+	recv_tok.value = tds_new(char, len);
 	if (!recv_tok.value)
 		return TDS_FAIL;
 	tds_get_n(tds, recv_tok.value, len);

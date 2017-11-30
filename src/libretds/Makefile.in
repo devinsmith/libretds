@@ -1,0 +1,40 @@
+# Makefile for version of libretds (modification of dblib).
+
+.PHONY: all clean
+
+include ../../config.mak
+
+SRCS = bcp.c database.c dkhelper.c dblib.c dbutil.c rpc.c
+
+DEPS = $(SRCS:.c=.d)
+OBJS = $(SRCS:.c=.o)
+LT_OBJS = $(SRCS:.c=.lo)
+
+INTERNAL_CFLAGS = -Wall -O2 -I. -I../../include -D_FREETDS_LIBRARY_SOURCE -D_REENTRANT -D_THREAD_SAFE
+CPPFLAGS += -MMD -MP -MT $@
+
+# On Linux libtool format is C:R:A which becomes (C - A).(A).(R)
+LT_VERSION_CURRENT = 1
+LT_VERSION_REVISION = 0
+LT_VERSION_AGE = 0
+
+LT_EXTRA = ../tds/libdktds.la ../replacements/libreplacements.la
+
+LIB = libretds.la
+DLL = libretds.so
+IMPORT = $(LIB)dll.a
+STATIC_LIB = $(LIB).a
+
+all: $(LIB)
+
+$(LIB): $(OBJS)
+	libtool --mode=link --tag CC $(CC) -rpath /usr/local/lib -o $(LIB) $(LT_OBJS) $(LT_EXTRA) -version-info $(LT_VERSION_CURRENT):$(LT_VERSION_REVISION):$(LT_VERSION_AGE)
+
+.c.o:
+	libtool --mode=compile --tag CC $(CC) $(INTERNAL_CFLAGS) $(CPPFLAGS) -c $<
+
+clean:
+	rm -rf *.o *.d *.lo *.la .libs
+
+# Include automatically generated dependency files
+-include $(DEPS)
