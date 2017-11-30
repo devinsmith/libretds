@@ -21,18 +21,7 @@
 
 #include <stdarg.h>
 
-#if TIME_WITH_SYS_TIME
-# if HAVE_SYS_TIME_H
-#  include <sys/time.h>
-#endif
-# include <time.h>
-#else
-# if HAVE_SYS_TIME_H
-#  include <sys/time.h>
-# else
-#  include <time.h>
-# endif
-#endif
+#include <freetds/time.h>
 
 #include <assert.h>
 #include <ctype.h>
@@ -55,15 +44,9 @@
 #include <process.h>
 #endif
 
-#include "tds.h"
-#include "tds_checks.h"
+#include <freetds/tds.h>
+#include <freetds/checks.h>
 #include "tdsthread.h"
-
-#ifdef DMALLOC
-#include <dmalloc.h>
-#endif
-
-TDS_RCSID(var, "$Id: util.c,v 1.102 2011-09-01 12:26:51 freddy77 Exp $");
 
 /**
  * Set state of TDS connection, with logging and checking.
@@ -75,9 +58,10 @@ TDS_STATE
 tds_set_state(TDSSOCKET * tds, TDS_STATE state)
 {
 	TDS_STATE prior_state;
-	static const char state_names[][10] = {
+	static const char state_names[][8] = {
 		"IDLE",
-	        "QUERYING",
+	        "WRITING",
+	        "SENDING",
 	        "PENDING",
 	        "READING",
 	        "DEAD"
@@ -91,8 +75,9 @@ tds_set_state(TDSSOCKET * tds, TDS_STATE state)
 
 	switch(state) {
 	case TDS_PENDING:
-		if (prior_state == TDS_READING || prior_state == TDS_QUERYING) {
+		if (prior_state == TDS_READING || prior_state == TDS_WRITING) {
 			tds->state = TDS_PENDING;
+			tds_mutex_unlock(&tds->wire_mtx);
 			break;
 		}
 		tdsdump_log(TDS_DBG_ERROR, "logic error: cannot change query state from %s to %s\n",
@@ -100,11 +85,32 @@ tds_set_state(TDSSOCKET * tds, TDS_STATE state)
 		break;
 	case TDS_READING:
 		/* transition to READING are valid only from PENDING */
+		if (tds_mutex_trylock(&tds->wire_mtx))
+			return tds->state;
 		if (tds->state != TDS_PENDING) {
+			tds_mutex_unlock(&tds->wire_mtx);
 			tdsdump_log(TDS_DBG_ERROR, "logic error: cannot change query state from %s to %s\n", 
 							state_names[prior_state], state_names[state]);
 			break;
 		}
+		tds->state = state;
+		break;
+	case TDS_SENDING:
+		if (prior_state != TDS_READING && prior_state != TDS_WRITING) {
+			tdsdump_log(TDS_DBG_ERROR, "logic error: cannot change query state from %s to %s\n",
+				state_names[prior_state], state_names[state]);
+			break;
+		}
+		if (tds->state == TDS_READING) {
+			/* TODO check this code, copied from tds_submit_prepare */
+			tds_free_all_results(tds);
+			tds->rows_affected = TDS_NO_COUNT;
+			tds_release_cursor(&tds->cur_cursor);
+			tds_release_cur_dyn(tds);
+			tds->current_op = TDS_OP_NONE;
+		}
+
+		tds_mutex_unlock(&tds->wire_mtx);
 		tds->state = state;
 		break;
 	case TDS_IDLE:
@@ -114,29 +120,38 @@ tds_set_state(TDSSOCKET * tds, TDS_STATE state)
 			break;
 		}
 	case TDS_DEAD:
+		if (prior_state == TDS_READING || prior_state == TDS_WRITING)
+			tds_mutex_unlock(&tds->wire_mtx);
 		tds->state = state;
 		break;
-	case TDS_QUERYING:
+	case TDS_WRITING:
 		CHECK_TDS_EXTRA(tds);
 
+		if (tds_mutex_trylock(&tds->wire_mtx))
+			return tds->state;
+
 		if (tds->state == TDS_DEAD) {
+			tds_mutex_unlock(&tds->wire_mtx);
 			tdsdump_log(TDS_DBG_ERROR, "logic error: cannot change query state from %s to %s\n", 
 							state_names[prior_state], state_names[state]);
 			tdserror(tds_get_ctx(tds), tds, TDSEWRIT, 0);
 			break;
-		} else if (tds->state != TDS_IDLE) {
+		} else if (tds->state != TDS_IDLE && tds->state != TDS_SENDING) {
+			tds_mutex_unlock(&tds->wire_mtx);
 			tdsdump_log(TDS_DBG_ERROR, "logic error: cannot change query state from %s to %s\n", 
 							state_names[prior_state], state_names[state]);
 			tdserror(tds_get_ctx(tds), tds, TDSERPND, 0);
 			break;
 		}
 
-		/* TODO check this code, copied from tds_submit_prepare */
-		tds_free_all_results(tds);
-		tds->rows_affected = TDS_NO_COUNT;
-		tds_release_cursor(&tds->cur_cursor);
-		tds_release_cur_dyn(tds);
-		tds->current_op = TDS_OP_NONE;
+		if (tds->state == TDS_IDLE) {
+			/* TODO check this code, copied from tds_submit_prepare */
+			tds_free_all_results(tds);
+			tds->rows_affected = TDS_NO_COUNT;
+			tds_release_cursor(&tds->cur_cursor);
+			tds_release_cur_dyn(tds);
+			tds->current_op = TDS_OP_NONE;
+		}
 
 		tds->state = state;
 		break;
@@ -145,31 +160,30 @@ tds_set_state(TDSSOCKET * tds, TDS_STATE state)
 		break;
 	}
 
+	state = tds->state;
+
 	tdsdump_log(TDS_DBG_ERROR, "Changed query state from %s to %s\n", state_names[prior_state], state_names[state]);
 	CHECK_TDS_EXTRA(tds);
 
-	state = tds->state;
 	return state;
 }
 
 
-int
-tds_swap_bytes(unsigned char *buf, int bytes)
+void
+tds_swap_bytes(void *buf, int bytes)
 {
-	unsigned char tmp;
-	int i;
+	unsigned char tmp, *begin, *last;
 
-	/* if (bytes % 2) { return 0 }; */
-	for (i = 0; i < bytes / 2; i++) {
-		tmp = buf[i];
-		buf[i] = buf[bytes - i - 1];
-		buf[bytes - i - 1] = tmp;
+	begin = (unsigned char *) buf;
+	last  = begin + bytes;
+
+	while (begin < --last) {
+		tmp      = *last;
+		*last    = *begin;
+		*begin++ = tmp;
 	}
-	return bytes;
 }
 
-/* not used by FreeTDS, uncomment if needed */
-#ifdef ENABLE_DEVELOPING
 unsigned int
 tds_gettime_ms(void)
 {
@@ -189,7 +203,6 @@ tds_gettime_ms(void)
 #error How to implement tds_gettime_ms ??
 #endif
 }
-#endif
 
 /*
  * Call the client library's error handler
@@ -244,12 +257,14 @@ static const TDS_ERROR_MESSAGE tds_error_messages[] =
 	, { TDSEUSCT,              EXCOMM,	"Unable to set communications timer" }
 	, { TDSEUTDS,              EXCOMM,	"Unrecognized TDS version received from the server" }
 	, { TDSEWRIT,              EXCOMM,	"Write to the server failed" }
-	/* last, with masgno == 0 */
-	, { 0,              EXCONSISTENCY,	"unrecognized msgno" }
+	, { TDSECONF,              EXUSER,	"Local configuration error.  "
+						"Check TDSDUMPCONFIG log for details." }
+	/* last, with msgno == TDSEOK */
+	, { TDSEOK,              EXCONSISTENCY,	"unrecognized msgno" }
 	};
-	
-static
-const char * retname(int retcode)
+
+static const char *
+retname(int retcode)
 {
 	switch(retcode) {
 	case TDS_INT_CONTINUE:
@@ -304,7 +319,7 @@ tdserror (const TDSCONTEXT * tds_ctx, TDSSOCKET * tds, int msgno, int errnum)
 	tdsdump_log(TDS_DBG_FUNC, "tdserror(%p, %p, %d, %d)\n", tds_ctx, tds, msgno, errnum);
 
 	/* look up the error message */
-	for (err = tds_error_messages; err->msgno; ++err) {
+	for (err = tds_error_messages; err->msgno != TDSEOK; ++err) {
 		if (err->msgno == msgno)
 			break;
 	}
@@ -337,7 +352,7 @@ tdserror (const TDSCONTEXT * tds_ctx, TDSSOCKET * tds, int msgno, int errnum)
 	} else {
 		const static char msg[] = "tdserror: client library not called because either "
 					  "tds_ctx (%p) or tds_ctx->err_handler is NULL\n";
-	 	tdsdump_log(TDS_DBG_FUNC, msg, tds_ctx);
+		tdsdump_log(TDS_DBG_ERROR, msg, tds_ctx);
 	}
 
   
@@ -359,6 +374,35 @@ tdserror (const TDSCONTEXT * tds_ctx, TDSSOCKET * tds, int msgno, int errnum)
 	return rc;
 }
 
+/**
+ * Copy a string of length len to a new allocated buffer
+ * This function does not read more than len bytes
+ * Please note that some system implementation of strndup
+ * do not assure they don't read past len bytes as they
+ * use still strlen to check length to copy limiting
+ * after strlen to size passed
+ * Also this function is different from strndup as it assume
+ * that len bytes are valid
+ * String returned is NUL terminated
+ *
+ * \param s   string to copy from
+ * \param len length to copy
+ *
+ * \returns string copied or NULL if errors
+ */
+char *
+tds_strndup(const void *s, TDS_INTPTR len)
+{
+	char *out;
 
+	if (len < 0)
+		return NULL;
 
+	out = tds_new(char, len + 1);
+	if (out) {
+		memcpy(out, s, len);
+		out[len] = 0;
+	}
+	return out;
+}
 

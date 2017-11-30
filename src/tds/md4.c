@@ -16,7 +16,6 @@
  *    Free Software Foundation, Inc., 59 Temple Place - Suite 330,
  *    Boston, MA 02111-1307, USA.
  */
-
 
 /* 
  * The algorithm is due to Ron Rivest.  This code is based on code
@@ -37,7 +36,7 @@
 #include <string.h>
 #endif /* HAVE_STRING_H */
 
-#include "tds.h"
+#include <freetds/tds.h>
 #include "md4.h"
 
 #undef word32

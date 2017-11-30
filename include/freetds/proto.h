@@ -133,6 +133,7 @@ typedef TDS_UINT8 TDS_BIGDATETIME;
 #define TDS_ENV_BEGINTRANS	8
 #define TDS_ENV_COMMITTRANS	9
 #define TDS_ENV_ROLLBACKTRANS	10
+#define TDS_ENV_ROUTING 	20
 
 /* Microsoft internal stored procedure id's */
 #define TDS_SP_CURSOR           1
@@ -236,6 +237,14 @@ typedef enum
 	USER_UNICHAR_TYPE = 34,		/* 0x22 */
 	USER_UNIVARCHAR_TYPE = 35	/* 0x23 */
 } TDS_USER_TYPE;
+
+/* TDS 5.0 Type of blobs (SYSBLOB) */
+typedef enum
+{
+	BLOB_TYPE_CHAR = 3,
+	BLOB_TYPE_BINARY = 4,
+	BLOB_TYPE_UNICHAR = 5,
+} TDS_BLOB_TYPE;
 
 /* compute operator */
 #define SYBAOPCNT  75		/* 0x4B */
@@ -477,4 +486,12 @@ enum {
 	TDS5_SEC_LOG_SECSESS = 16,
 	TDS5_SEC_LOG_ENCRYPT2 = 32,
 	TDS5_SEC_LOG_NONCE = 128
+};
+
+/* MS encryption byte (pre login) */
+enum {
+	TDS7_ENCRYPT_OFF,
+	TDS7_ENCRYPT_ON,
+	TDS7_ENCRYPT_NOT_SUP,
+	TDS7_ENCRYPT_REQ,
 };

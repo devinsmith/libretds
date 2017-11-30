@@ -36,7 +36,7 @@
 #include <errno.h>
 #endif
 
-#include "tds.h"
+#include <freetds/tds.h>
 #include <freetds/iconv.h>
 #if HAVE_ICONV
 #include <iconv.h>

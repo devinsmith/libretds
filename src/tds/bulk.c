@@ -38,7 +38,7 @@
 
 #include <assert.h>
 
-#include "tds.h"
+#include <freetds/tds.h>
 #include "tds_checks.h"
 #include <freetds/bytes.h>
 #include <freetds/iconv.h>

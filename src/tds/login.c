@@ -41,7 +41,7 @@
 #include <process.h>
 #endif
 
-#include "tds.h"
+#include <freetds/tds.h>
 #include <freetds/iconv.h>
 #include <freetds/string.h>
 #include <freetds/bytes.h>

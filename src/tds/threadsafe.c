@@ -81,14 +81,12 @@
 #include <shlobj.h>
 #endif
 
-#include "tds.h"
+#include <freetds/tds.h>
 #include "tdsthread.h"
 #include "replacements.h"
 #ifdef DMALLOC
 #include <dmalloc.h>
 #endif
-
-TDS_RCSID(var, "$Id: threadsafe.c,v 1.52 2011-10-21 10:01:00 freddy77 Exp $");
 
 struct tm *
 tds_localtime_r(const time_t *timep, struct tm *result)
@@ -129,7 +127,7 @@ tds_timestamp_str(char *str, int maxlen)
 	tm = tds_localtime_r(&t, &res);
 
 	snprintf(str, maxlen, "%02d:%02d:%02d.%06lu", tm->tm_hour, tm->tm_min,
-	    tm->sec, (long) tv.tv_usec);
+	    tm->tm_sec, (long) tv.tv_usec);
 #else /* _WIN32 */
 	SYSTEMTIME st;
 

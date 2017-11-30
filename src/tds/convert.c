@@ -46,8 +46,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "tds.h"
-#include "tdsconvert.h"
+#include <freetds/tds.h>
+#include <freetds/convert.h>
 #include "tdsbytes.h"
 #include "replacements.h"
 #ifdef DMALLOC

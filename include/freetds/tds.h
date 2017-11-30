@@ -52,6 +52,8 @@ typedef struct tds_bcpinfo TDSBCPINFO;
 #include "tds_sysdep_private.h"
 #include "tdsthread.h"
 #include <freetds/bool.h>
+#include <freetds/macros.h>
+#include <freetds/string.h>
 #include "replacements.h"
 
 #include <freetds/pushvis.h>
@@ -63,16 +65,6 @@ extern "C"
 }
 #endif
 #endif
-
-/**
- * Structure to hold a string.
- * Use tds_dstr_* functions/macros, do not access members directly.
- * There should be always a buffer.
- */
-typedef struct tds_dstr {
-	size_t dstr_size;
-	char dstr_s[1];
-} *DSTR;
 
 /**
  * @file tds.h
@@ -250,6 +242,7 @@ enum tds_end
  */
 typedef enum {	TDSEOK    = TDS_SUCCESS, 
 		TDSEVERDOWN    =  100,
+		TDSEINPROGRESS,
 		TDSEICONVIU    = 2400, 
 		TDSEICONVAVAIL = 2401, 
 		TDSEICONVO     = 2402, 
@@ -311,43 +304,6 @@ typedef union tds_option_arg
 typedef enum tds_encryption_level {
 	TDS_ENCRYPTION_OFF, TDS_ENCRYPTION_REQUEST, TDS_ENCRYPTION_REQUIRE
 } TDS_ENCRYPTION_LEVEL;
-
-#define TDS_ZERO_FREE(x) do {free((x)); (x) = NULL;} while(0)
-#define TDS_VECTOR_SIZE(x) (sizeof(x)/sizeof(x[0]))
-#ifdef offsetof
-#define TDS_OFFSET(str, field) offsetof(str, field)
-#else
-#define TDS_OFFSET(str, field) (((char*)&((str*)0)->field)-((char*)0))
-#endif
-
-#if defined(__GNUC__) && __GNUC__ >= 3
-# define TDS_LIKELY(x)	__builtin_expect(!!(x), 1)
-# define TDS_UNLIKELY(x)	__builtin_expect(!!(x), 0)
-#else
-# define TDS_LIKELY(x)	(x)
-# define TDS_UNLIKELY(x)	(x)
-#endif
-
-#if ENABLE_EXTRA_CHECKS
-# if defined(__GNUC__) && __GNUC__ >= 2
-# define TDS_COMPILE_CHECK(name,check) \
-    extern int name[(check)?1:-1] __attribute__ ((unused))
-# else
-# define TDS_COMPILE_CHECK(name,check) \
-    extern int name[(check)?1:-1]
-# endif
-# define TDS_EXTRA_CHECK(stmt) stmt
-#else
-# define TDS_COMPILE_CHECK(name,check) \
-    extern int disabled_check_##name
-# define TDS_EXTRA_CHECK(stmt)
-#endif
-
-#if ENABLE_EXTRA_CHECKS && defined(__GNUC__) && __GNUC__ >= 4
-#define TDS_WUR __attribute__ ((__warn_unused_result__))
-#else
-#define TDS_WUR
-#endif
 
 /*
  * TODO use system macros for optimization
@@ -544,6 +500,8 @@ typedef struct tds_login
 	DSTR dump_file;
 	int debug_flags;
 	int text_size;
+	DSTR routing_address;
+	uint16_t routing_port;
 
 	unsigned char option_flag2;
 
@@ -1191,6 +1149,7 @@ struct tds_socket
 	TDSCURSOR *cur_cursor;		/**< cursor in use */
 	TDS_TINYINT bulk_query;		/**< true is query sent was a bulk query so we need to switch state to QUERYING */
 	TDS_TINYINT has_status; 	/**< true is ret_status is valid */
+	bool in_row;			/**< true if we are getting rows */
 	TDS_INT ret_status;     	/**< return status from store procedure */
 	TDS_STATE state;
 	volatile 
@@ -1443,9 +1402,7 @@ DSTR* tds_dstr_get(TDSSOCKET * tds, DSTR * s, size_t len);
 int tdserror (const TDSCONTEXT * tds_ctx, TDSSOCKET * tds, int msgno, int errnum);
 TDS_STATE tds_set_state(TDSSOCKET * tds, TDS_STATE state);
 void tds_swap_bytes(void *buf, int bytes);
-#ifdef ENABLE_DEVELOPING
 unsigned int tds_gettime_ms(void);
-#endif
 char *tds_strndup(const void *s, TDS_INTPTR len);
 
 
@@ -1491,9 +1448,7 @@ int tds_connection_write(TDSSOCKET *tds, const unsigned char *buf, int buflen, i
 #define TDSSELREAD  POLLIN
 #define TDSSELWRITE POLLOUT
 int tds_select(TDSSOCKET * tds, unsigned tds_sel, int timeout_seconds);
-#if ENABLE_ODBC_MARS
 void tds_connection_close(TDSCONNECTION *conn);
-#endif
 int tds_goodread(TDSSOCKET * tds, unsigned char *buf, int buflen);
 int tds_goodwrite(TDSSOCKET * tds, const unsigned char *buffer, size_t buflen);
 void tds_socket_flush(TDS_SYS_SOCKET sock);
@@ -1515,11 +1470,6 @@ int tds_append_cancel(TDSSOCKET *tds);
 TDSRET tds_append_fin(TDSSOCKET *tds);
 #else
 int tds_put_cancel(TDSSOCKET * tds);
-static inline
-void tds_connection_close(TDSCONNECTION *connection)
-{
-	tds_close_socket((TDSSOCKET* ) connection);
-}
 #endif
 
 
@@ -1549,6 +1499,9 @@ TDSAUTHENTICATION * tds_sspi_get_auth(TDSSOCKET * tds);
 
 /* random.c */
 void tds_random_buffer(unsigned char *out, int len);
+
+TDSAUTHENTICATION * tds5_negotiate_get_auth(TDSSOCKET * tds);
+void tds5_negotiate_set_msg_type(TDSSOCKET * tds, TDSAUTHENTICATION * auth, unsigned msg_type);
 
 /* bulk.c */
 
@@ -1620,7 +1573,7 @@ bool tds_capability_enabled(const TDS_CAPABILITY_TYPE *cap, unsigned cap_num)
 /** Check if product is Sybase (such as Adaptive Server Enterrprice). x should be a TDSSOCKET*. */
 #define TDS_IS_SYBASE(x) (!(tds_conn(x)->product_version & 0x80000000u))
 /** Check if product is Microsft SQL Server. x should be a TDSSOCKET*. */
-#define TDS_IS_MSSQL(x) ((tds_conn(x)->product_version & 0x80000000u)!=0)
+#define TDS_IS_MSSQL(x) (((x)->conn->product_version & 0x80000000u)!=0)
 
 /** Calc a version number for mssql. Use with TDS_MS_VER(7,0,842).
  * For test for a range of version you can use check like

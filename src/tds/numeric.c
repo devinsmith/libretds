@@ -27,15 +27,13 @@
 #include <string.h>
 #endif /* HAVE_STRING_H */
 
-#include <tds.h>
-#include <tdsconvert.h>
+#include <freetds/tds.h>
+#include <freetds/convert.h>
 #include <tdsbytes.h>
 #include <stdlib.h>
 #ifdef DMALLOC
 #include <dmalloc.h>
 #endif
-
-TDS_RCSID(var, "$Id: numeric.c,v 1.50 2011-06-11 07:42:26 freddy77 Exp $");
 
 /**
  * tds_numeric_bytes_per_prec is indexed by precision and will

@@ -66,7 +66,7 @@
 #include <process.h>
 #endif
 
-#include "tds.h"
+#include <freetds/tds.h>
 #include "tds_configs.h"
 #include <freetds/string.h>
 #include "replacements.h"

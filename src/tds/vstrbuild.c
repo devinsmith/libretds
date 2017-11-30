@@ -30,7 +30,7 @@
 #include <string.h>
 #endif /* HAVE_STRING_H */
 
-#include "tds.h"
+#include <freetds/tds.h>
 #include "replacements.h"
 
 struct string_linked_list

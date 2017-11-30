@@ -37,7 +37,7 @@
 #include <assert.h>
 #include <ctype.h>
 
-#include "tds.h"
+#include <freetds/tds.h>
 #include "tdsbytes.h"
 #include "tdsiconv.h"
 

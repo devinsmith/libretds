@@ -28,13 +28,13 @@
 
 #include <assert.h>
 
-#include "tds.h"
+#include <freetds/tds.h>
 #include <freetds/iconv.h>
 #include <freetds/checks.h>
 #include <freetds/string.h>
 
 #include "replacements.h"
-#include "tds_enum_cap.h"
+#include <freetds/enum_cap.h>
 
 #if HAVE_SYS_SOCKET_H
 #include <sys/socket.h>

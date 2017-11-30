@@ -196,7 +196,7 @@
 #endif /* HAVE_STDLIB_H */
 
 #define TDS_DONT_DEFINE_DEFAULT_FUNCTIONS
-#include "tds.h"
+#include <freetds/tds.h>
 #include <freetds/bytes.h>
 #include <freetds/iconv.h>
 #include <freetds/checks.h>

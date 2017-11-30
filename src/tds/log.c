@@ -56,7 +56,7 @@
 # include <process.h>
 #endif
 
-#include "tds.h"
+#include <freetds/tds.h>
 #include <freetds/checks.h>
 #include "tdsthread.h"
 

@@ -32,7 +32,7 @@
 
 #include <string.h>
 
-#include "tds.h"
+#include <freetds/tds.h>
 #include <freetds/bytes.h>
 #include <freetds/string.h>
 #include <freetds/iconv.h>
