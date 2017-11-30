@@ -4,7 +4,7 @@
 
 include ../../config.mak
 
-SRCS = bcp.c dblib.c dbutil.c rpc.c
+SRCS = bcp.c dblib.c dbpivot.c dbutil.c rpc.c
 
 DEPS = $(SRCS:.c=.d)
 OBJS = $(SRCS:.c=.o)

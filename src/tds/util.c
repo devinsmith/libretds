@@ -28,13 +28,9 @@
 #include <limits.h>
 #include <stdio.h>
 
-#if HAVE_STDLIB_H
 #include <stdlib.h>
-#endif /* HAVE_STDLIB_H */
 
-#if HAVE_STRING_H
 #include <string.h>
-#endif /* HAVE_STRING_H */
 
 #if HAVE_UNISTD_H
 #include <unistd.h>
@@ -46,7 +42,7 @@
 
 #include <freetds/tds.h>
 #include <freetds/checks.h>
-#include "tdsthread.h"
+#include <freetds/thread.h>
 
 /**
  * Set state of TDS connection, with logging and checking.

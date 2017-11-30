@@ -82,11 +82,8 @@
 #endif
 
 #include <freetds/tds.h>
-#include "tdsthread.h"
+#include <freetds/thread.h>
 #include "replacements.h"
-#ifdef DMALLOC
-#include <dmalloc.h>
-#endif
 
 struct tm *
 tds_localtime_r(const time_t *timep, struct tm *result)

@@ -60,7 +60,7 @@
  */
 #include <freetds/tds.h>
 #include <freetds/data.h>
-#include <tdsthread.h>
+#include <freetds/thread.h>
 #include <freetds/convert.h>
 #include <replacements.h>
 #include <sybdb.h>
