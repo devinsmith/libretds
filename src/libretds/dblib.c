@@ -22,16 +22,7 @@
 
 #include <stdarg.h>
 
-#if TIME_WITH_SYS_TIME
-# include <sys/time.h>
-# include <time.h>
-#else
-# if HAVE_SYS_TIME_H
-#  include <sys/time.h>
-# else
-#  include <time.h>
-# endif
-#endif
+#include <freetds/time.h>
 
 #include <assert.h>
 #include <stdio.h>
@@ -690,7 +681,7 @@ dbinit(void)
 	 * DBLIBCONTEXT stores a list of current connections so they may be closed with dbexit() 
 	 */
 
-	g_dblib_ctx.connection_list = (TDSSOCKET**) calloc(TDS_MAX_CONN, sizeof(TDSSOCKET *));
+	g_dblib_ctx.connection_list = tds_new0(TDSSOCKET *, TDS_MAX_CONN);
 	if (g_dblib_ctx.connection_list == NULL) {
 		tdsdump_log(TDS_DBG_FUNC, "dbinit: out of memory\n");
 		tds_mutex_unlock(&dblib_mutex);
@@ -4106,7 +4097,7 @@ dbcmdrow(DBPROCESS * dbproc)
  * \param computeid of \c COMPUTE clause to which we're referring. 
  * \param column Nth column in \a computeid, starting from 1.
  * \return Nth column in the base result set, on which \a column was computed.  
- * \sa dbadata(), dbadlen(), dbaltlen(), dbnumalts(), dbprtype(). 
+ * \sa dbadata(), dbadlen(), dbaltlen(), dbgetrow(), dbnextrow(), dbnumalts(), dbprtype(). 
  */
 int
 dbaltcolid(DBPROCESS * dbproc, int computeid, int column)
@@ -4114,7 +4105,6 @@ dbaltcolid(DBPROCESS * dbproc, int computeid, int column)
 	TDSCOLUMN *curcol;
 
 	tdsdump_log(TDS_DBG_FUNC, "dbaltcolid(%p, %d, %d)\n", dbproc, computeid, column);
-	CHECK_PARAMETER(dbproc, SYBENULL, -1);
 
 	curcol = dbacolptr(dbproc, computeid, column, 0);
 	if (!curcol)
