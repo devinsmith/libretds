@@ -69,11 +69,11 @@ TEST_ATTRIBUTE(t29,TDS_NUMERIC,scale,DBNUMERIC,scale);
 TEST_ATTRIBUTE(t30,TDS_NUMERIC,array,DBNUMERIC,array);
 #endif
 
-/* 
- * The next 2 functions receive the info and error messages that come from the TDS layer.  
- * The address of this function is passed to the TDS layer in dbinit().  
- * It takes a pointer to a DBPROCESS, it's just that the TDS layer didn't 
- * know what it really was.  
+/*
+ * The next 2 functions receive the info and error messages that come from the TDS layer.
+ * The address of this function is passed to the TDS layer in dbinit().
+ * It takes a pointer to a DBPROCESS, it's just that the TDS layer didn't
+ * know what it really was.
  */
 int
 _dblib_handle_info_message(const TDSCONTEXT * tds_ctx, TDSSOCKET * tds, TDSMESSAGE * msg)
@@ -81,9 +81,10 @@ _dblib_handle_info_message(const TDSCONTEXT * tds_ctx, TDSSOCKET * tds, TDSMESSA
 	DBPROCESS *dbproc = (tds && tds_get_parent(tds))? (DBPROCESS *) tds_get_parent(tds) : NULL;
 
 	tdsdump_log(TDS_DBG_FUNC, "_dblib_handle_info_message(%p, %p, %p)\n", tds_ctx, tds, msg);
-	tdsdump_log(TDS_DBG_FUNC, "msgno %d: \"%s\"\n", msg->msgno, msg->message);
+	tdsdump_log(TDS_DBG_FUNC, "msgno %d (sev: %d): \"%s\"\n", msg->msgno,
+	    msg->severity, msg->message);
 
-	/* 
+	/*
 	 * Check to see if the user supplied a function, else ignore the message. 
 	 */
 	if (_dblib_msg_handler) {
@@ -93,7 +94,8 @@ _dblib_handle_info_message(const TDSCONTEXT * tds_ctx, TDSSOCKET * tds, TDSMESSA
 				   msg->severity, msg->message, msg->server, msg->proc_name, msg->line_number);
 	}
 
-	if (msg->severity > 10 && _dblib_err_handler) {	/* call the application's error handler, if installed. */
+	/* call the application's error handler, if installed. */
+	if (msg->severity > 10 && _dblib_err_handler) {
 		/*
 		 * Sybase docs say SYBESMSG is generated only in specific
 		 * cases (severity greater than 16, or deadlock occurred, or
