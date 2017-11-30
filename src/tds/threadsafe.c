@@ -116,7 +116,6 @@ tds_timestamp_str(char *str, int maxlen)
 	struct tm res;
 	time_t t;
 	struct timeval tv;
-	char usecs[10];
 
 	gettimeofday(&tv, NULL);
 	t = tv.tv_sec;

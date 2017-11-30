@@ -436,7 +436,6 @@ static const DBREAL		null_REAL = 0;
 
 static const DBCHAR		null_CHAR = '\0';
 static const DBVARYCHAR		null_VARYCHAR = { 0, {0} };
-static const DBBINARY		null_BINARY = 0;
 
 static const DBDATETIME		null_DATETIME = { 0, 0 };
 static const DBDATETIME4	null_SMALLDATETIME = { 0, 0 };
@@ -2770,7 +2769,7 @@ dbcount(DBPROCESS * dbproc)
  * \sa dbgetrow(), dbnextrow(), dbsetopt().
  */
 void
-dbclrbuf(DBPROCESS * dbproc, DBINT n)
+dbclrbuf(DBPROCESS *dbproc, DBINT n)
 {
 	tdsdump_log(TDS_DBG_FUNC, "dbclrbuf(%p, %d)\n", dbproc, n);
 	CHECK_PARAMETER(dbproc, SYBENULL, );

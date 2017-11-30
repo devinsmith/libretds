@@ -272,12 +272,12 @@ buffer_row2idx(const DBPROC_ROWBUF *buf, int row_number)
  * It just makes the space available for a different row.
  */
 static void
-buffer_delete_rows(DBPROC_ROWBUF * buf,	int count)
+buffer_delete_rows(DBPROC_ROWBUF * buf, int count)
 {
 	int i;
 
 	BUFFER_CHECK(buf);
-	if (count < 0 || count > buffer_count(buf)) {
+	if (count > buffer_count(buf)) {
 		count = buffer_count(buf);
 	}
 

@@ -80,17 +80,11 @@ static int parse_server_name_for_port(TDSLOGIN * connection, TDSLOGIN * login);
 #if !defined(_WIN32)
        const char STD_DATETIME_FMT[] = "%b %e %Y %I:%M%p";
 static const char pid_config_logpath[] = "/tmp/tdsconfig.log.%d";
-static const char freetds_conf[] = "%s/etc/freetds.conf";
-static const char location[] = "(from $FREETDS/etc)";
 static const char pid_logpath[] = "/tmp/freetds.log.%d";
-static const char interfaces_path[] = "/etc/freetds";
 #else
        const char STD_DATETIME_FMT[] = "%b %d %Y %I:%M%p"; /* msvcr80.dll does not support %e */
 static const char pid_config_logpath[] = "c:\\tdsconfig.log.%d";
-static const char freetds_conf [] = "%s\\freetds.conf";
-static const char location[] = "(from $FREETDS)";
 static const char pid_logpath[] = "c:\\freetds.log.%d";
-static const char interfaces_path[] = "c:\\";
 #endif
 
 /**

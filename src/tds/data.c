@@ -1556,7 +1556,9 @@ tds_sybblob_row_len(TDSCOLUMN *col)
 TDSRET
 tds_sybblob_get(TDSSOCKET * tds, TDSCOLUMN * col)
 {
-	uint8_t serialization_type = tds_get_byte(tds);
+	/* TODO: save serialization_type? */
+	tds_get_byte(tds);
+
 	/* TODO save ClassId */
 	tds_get_n(tds, NULL, tds_get_usmallint(tds));
 	for (;;) {

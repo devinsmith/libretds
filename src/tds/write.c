@@ -41,11 +41,10 @@
 #endif /* HAVE_UNISTD_H */
 
 #include <freetds/tds.h>
-#include "tdsiconv.h"
-#include "tdsbytes.h"
-#ifdef DMALLOC
-#include <dmalloc.h>
-#endif
+#include <freetds/iconv.h>
+#include <freetds/bytes.h>
+#include <freetds/stream.h>
+#include <freetds/checks.h>
 
 /**
  * \addtogroup network
@@ -63,11 +62,11 @@ tds_put_n(TDSSOCKET * tds, const void *buf, size_t n)
 	const unsigned char *bufp = (const unsigned char *) buf;
 
 	for (; n;) {
-		left = tds->out_buf_max - tds->out_pos;
-		if (left <= 0) {
+		if (tds->out_buf_max <= tds->out_pos) {
 			tds_write_packet(tds, 0x0);
 			continue;
 		}
+		left = tds->out_buf_max - tds->out_pos;
 		if (left > n)
 			left = n;
 		if (bufp) {
@@ -93,13 +92,14 @@ tds_put_n(TDSSOCKET * tds, const void *buf, size_t n)
 int
 tds_put_string(TDSSOCKET * tds, const char *s, int len)
 {
-	TDS_ENCODING *client;
-	char outbuf[256], *poutbuf;
-	size_t inbytesleft, outbytesleft, bytes_out = 0;
+	TDSSTATICINSTREAM r;
+	TDSDATAOUTSTREAM w;
 
-	client = &tds->conn->char_convs[client2ucs2]->from.charset;
 
 	if (len < 0) {
+		TDS_ENCODING *client;
+		client = &tds->conn->char_convs[client2ucs2]->from.charset;
+
 		if (client->min_bytes_per_char == 1) {	/* ascii or UTF-8 */
 			len = (int)strlen(s);
 		} else if (client->min_bytes_per_char == 2) {	/* UCS-2 or variant */
@@ -128,40 +128,11 @@ tds_put_string(TDSSOCKET * tds, const char *s, int len)
 		return len;
 	}
 
-	memset(&tds->conn->char_convs[client2ucs2]->suppress, 0, sizeof(tds->conn->char_convs[client2ucs2]->suppress));
-	tds->conn->char_convs[client2ucs2]->suppress.e2big = 1;
-	inbytesleft = len;
-	while (inbytesleft) {
-		tdsdump_log(TDS_DBG_NETWORK, "tds_put_string converting %d bytes of \"%.*s\"\n", (int) inbytesleft, (int) inbytesleft, s);
-		outbytesleft = sizeof(outbuf);
-		poutbuf = outbuf;
-		
-		if ((size_t)-1 == tds_iconv(tds, tds->conn->char_convs[client2ucs2], to_server, &s, &inbytesleft, &poutbuf, &outbytesleft)) {
-		
-			if (errno == EINVAL) {
-				tdsdump_log(TDS_DBG_NETWORK, "tds_put_string: tds_iconv() encountered partial sequence. "
-							     "%d bytes remain.\n", (int) inbytesleft);
-				/* TODO return some sort or error ?? */
-				break;
-			} else if (errno != E2BIG) {
-				/* It's not an incomplete multibyte sequence, or it IS, but we're not anticipating one. */
-				tdsdump_log(TDS_DBG_NETWORK, "Error: tds_put_string: "
-							     "Gave up converting %d bytes due to error %d.\n", 
-							     (int) inbytesleft, errno);
-				tdsdump_dump_buf(TDS_DBG_NETWORK, "Troublesome bytes", s, inbytesleft);
-			}
+	tds_staticin_stream_init(&r, s, len);
+	tds_dataout_stream_init(&w, tds);
 
-			if (poutbuf == outbuf) {	/* tds_iconv did not convert anything, avoid infinite loop */
-				tdsdump_log(TDS_DBG_NETWORK, "Error: tds_put_string: No conversion possible, giving up.\n");
-				break;
-			}
-		}
-		
-		bytes_out += poutbuf - outbuf;
-		tds_put_n(tds, outbuf, poutbuf - outbuf);
-	}
-	tdsdump_log(TDS_DBG_NETWORK, "tds_put_string wrote %d bytes\n", (int) bytes_out);
-	return (int)bytes_out;
+	tds_convert_stream(tds, tds->conn->char_convs[client2ucs2], to_server, &r.stream, &w.stream);
+	return w.written;
 }
 
 int
@@ -183,7 +154,7 @@ tds_put_int8(TDSSOCKET * tds, TDS_INT8 i)
 #if WORDS_BIGENDIAN
 	TDS_UINT h;
 
-	if (tds_conn(tds)->emul_little_endian) {
+	if (tds->conn->emul_little_endian) {
 		h = (TDS_UINT) i;
 		tds_put_byte(tds, h & 0x000000FF);
 		tds_put_byte(tds, (h & 0x0000FF00) >> 8);
@@ -206,7 +177,7 @@ tds_put_int8(TDSSOCKET * tds, TDS_INT8 i)
 
 	p = &tds->out_buf[tds->out_pos];
 #if WORDS_BIGENDIAN
-	if (tds->emul_little_endian) {
+	if (tds->conn->emul_little_endian) {
 		TDS_PUT_UA4LE(p, (TDS_UINT) i);
 		TDS_PUT_UA4LE(p+4, (TDS_UINT) (i >> 32));
 	} else {
@@ -227,7 +198,7 @@ tds_put_int(TDSSOCKET * tds, TDS_INT i)
 {
 #if TDS_ADDITIONAL_SPACE < 4
 #if WORDS_BIGENDIAN
-	if (tds_conn(tds)->emul_little_endian) {
+	if (tds->conn->emul_little_endian) {
 		tds_put_byte(tds, i & 0x000000FF);
 		tds_put_byte(tds, (i & 0x0000FF00) >> 8);
 		tds_put_byte(tds, (i & 0x00FF0000) >> 16);
@@ -244,7 +215,7 @@ tds_put_int(TDSSOCKET * tds, TDS_INT i)
 
 	p = &tds->out_buf[tds->out_pos];
 #if WORDS_BIGENDIAN
-	if (tds_conn(tds)->emul_little_endian)
+	if (tds->conn->emul_little_endian)
 		TDS_PUT_UA4LE(p, i);
 	else
 		TDS_PUT_UA4(p, i);
@@ -261,7 +232,7 @@ tds_put_smallint(TDSSOCKET * tds, TDS_SMALLINT si)
 {
 #if TDS_ADDITIONAL_SPACE < 2
 #if WORDS_BIGENDIAN
-	if (tds_conn(tds)->emul_little_endian) {
+	if (tds->conn->emul_little_endian) {
 		tds_put_byte(tds, si & 0x000000FF);
 		tds_put_byte(tds, (si & 0x0000FF00) >> 8);
 		return 0;
@@ -276,7 +247,7 @@ tds_put_smallint(TDSSOCKET * tds, TDS_SMALLINT si)
 
 	p = &tds->out_buf[tds->out_pos];
 #if WORDS_BIGENDIAN
-	if (tds_conn(tds)->emul_little_endian)
+	if (tds->conn->emul_little_endian)
 		TDS_PUT_UA2LE(p, si);
 	else
 		TDS_PUT_UA2(p, si);
@@ -300,8 +271,7 @@ tds_put_byte(TDSSOCKET * tds, unsigned char c)
 int
 tds_init_write_buf(TDSSOCKET * tds)
 {
-	/* TODO needed ?? */
-	memset(tds->out_buf, '\0', tds->out_buf_max);
+	TDS_MARK_UNDEFINED(tds->out_buf, tds->out_buf_max);
 	tds->out_pos = 8;
 	return 0;
 }
@@ -316,8 +286,16 @@ tds_flush_packet(TDSSOCKET * tds)
 	TDSRET result = TDS_FAIL;
 
 	/* GW added check for tds->s */
-	if (!IS_TDSDEAD(tds))
+	if (!IS_TDSDEAD(tds)) {
+#if TDS_ADDITIONAL_SPACE != 0
+		if (tds->out_pos > tds->out_buf_max) {
+			result = tds_write_packet(tds, 0x00);
+			if (TDS_FAILED(result))
+				return result;
+		}
+#endif
 		result = tds_write_packet(tds, 0x01);
+	}
 	return result;
 }
 
