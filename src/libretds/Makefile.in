@@ -4,7 +4,7 @@
 
 include ../../config.mak
 
-SRCS = bcp.c database.c dkhelper.c dblib.c dbutil.c rpc.c
+SRCS = bcp.c dblib.c dbutil.c rpc.c
 
 DEPS = $(SRCS:.c=.d)
 OBJS = $(SRCS:.c=.o)
@@ -18,7 +18,7 @@ LT_VERSION_CURRENT = 1
 LT_VERSION_REVISION = 0
 LT_VERSION_AGE = 0
 
-LT_EXTRA = ../tds/libdktds.la ../replacements/libreplacements.la
+LT_EXTRA = ../tds/libtds.la ../replacements/libreplacements.la
 
 LIB = libretds.la
 DLL = libretds.so

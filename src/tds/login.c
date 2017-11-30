@@ -82,7 +82,7 @@ tds_set_passwd(TDSLOGIN * tds_login, const char *password)
 	return true;
 }
 void
-tds_set_bulk(TDSLOGIN * tds_login, TDS_TINYINT enabled)
+tds_set_bulk(TDSLOGIN * tds_login, bool enabled)
 {
 	tds_login->bulk_copy = enabled ? 0 : 1;
 }

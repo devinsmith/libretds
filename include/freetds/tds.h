@@ -302,7 +302,10 @@ typedef union tds_option_arg
 
 
 typedef enum tds_encryption_level {
-	TDS_ENCRYPTION_OFF, TDS_ENCRYPTION_REQUEST, TDS_ENCRYPTION_REQUIRE
+	TDS_ENCRYPTION_DEFAULT,
+	TDS_ENCRYPTION_OFF,
+	TDS_ENCRYPTION_REQUEST,
+	TDS_ENCRYPTION_REQUIRE
 } TDS_ENCRYPTION_LEVEL;
 
 /*
@@ -381,6 +384,9 @@ bool is_tds_type_valid(int type)
 #define TDS_DEF_PORT		1433
 #elif TDS46
 #define TDS_DEFAULT_VERSION	0x406
+#define TDS_DEF_PORT		4000
+#elif TDS50
+#define TDS_DEFAULT_VERSION	0x500
 #define TDS_DEF_PORT		4000
 #elif TDS70
 #define TDS_DEFAULT_VERSION	0x700
@@ -505,7 +511,7 @@ typedef struct tds_login
 
 	unsigned char option_flag2;
 
-	unsigned int bulk_copy:1;
+	unsigned int bulk_copy:1;	/**< if bulk copy should be enabled */
 	unsigned int suppress_language:1;
 	unsigned int emul_little_endian:1;
 	unsigned int gssapi_use_delegation:1;
@@ -701,6 +707,8 @@ struct tds_column
 	TDS_INT column_textpos;
 	TDS_INT column_text_sqlgetdatapos;
 	TDS_CHAR column_text_sqlputdatainfo;
+
+	TDS_TINYINT blob_type;
 
 	BCPCOLDATA *bcp_column_data;
 	/**
@@ -1281,7 +1289,7 @@ void tds_deinit_bcpinfo(TDSBCPINFO *bcpinfo);
 void tds_set_packet(TDSLOGIN * tds_login, int packet_size);
 void tds_set_port(TDSLOGIN * tds_login, int port);
 bool tds_set_passwd(TDSLOGIN * tds_login, const char *password) TDS_WUR;
-void tds_set_bulk(TDSLOGIN * tds_login, TDS_TINYINT enabled);
+void tds_set_bulk(TDSLOGIN * tds_login, bool enabled);
 bool tds_set_user(TDSLOGIN * tds_login, const char *username) TDS_WUR;
 bool tds_set_app(TDSLOGIN * tds_login, const char *application) TDS_WUR;
 bool tds_set_host(TDSLOGIN * tds_login, const char *hostname) TDS_WUR;
@@ -1500,8 +1508,11 @@ TDSAUTHENTICATION * tds_sspi_get_auth(TDSSOCKET * tds);
 /* random.c */
 void tds_random_buffer(unsigned char *out, int len);
 
+
+/* sec_negotiate.c */
 TDSAUTHENTICATION * tds5_negotiate_get_auth(TDSSOCKET * tds);
 void tds5_negotiate_set_msg_type(TDSSOCKET * tds, TDSAUTHENTICATION * auth, unsigned msg_type);
+
 
 /* bulk.c */
 
@@ -1571,7 +1582,7 @@ bool tds_capability_enabled(const TDS_CAPABILITY_TYPE *cap, unsigned cap_num)
 #define IS_TDSDEAD(x) (((x) == NULL) || (x)->state == TDS_DEAD)
 
 /** Check if product is Sybase (such as Adaptive Server Enterrprice). x should be a TDSSOCKET*. */
-#define TDS_IS_SYBASE(x) (!(tds_conn(x)->product_version & 0x80000000u))
+#define TDS_IS_SYBASE(x) (!((x)->conn->product_version & 0x80000000u))
 /** Check if product is Microsft SQL Server. x should be a TDSSOCKET*. */
 #define TDS_IS_MSSQL(x) (((x)->conn->product_version & 0x80000000u)!=0)
 

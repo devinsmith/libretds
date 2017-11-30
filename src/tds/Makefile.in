@@ -6,8 +6,8 @@ include ../../config.mak
 
 SRCS = bulk.c challenge.c config.c convert.c data.c des.c getmac.c gssapi.c \
 			 hmac_md5.c iconv.c locale.c log.c login.c md4.c md5.c mem.c net.c \
-			 numeric.c packet.c query.c random.c read.c tds_checks.c tdsstring.c \
-			 threadsafe.c token.c util.c vstrbuild.c write.c
+			 numeric.c packet.c query.c random.c read.c sec_negotiate.c stream.c \
+			 tds_checks.c tdsstring.c threadsafe.c token.c util.c vstrbuild.c write.c
 
 OBJS = $(SRCS:.c=.o)
 DEPS = $(SRCS:.c=.d)

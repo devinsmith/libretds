@@ -258,6 +258,8 @@ fi
 rm -f _testprog*
 done
 
+# TODO: Need to check for 16 bit, 32 bit integers.
+
 # Check size of long.
 printf "checking size of long... "
 echo '#include <stdio.h>
@@ -1233,11 +1235,8 @@ echo "#define tds_sysdep_intptr_type $tds_sysdep_intptr_type" >> include/tds_sys
 echo '
 #endif				/* !tds_sysdep_intptr_type */
 
-#if !defined(MSDBLIB) && !defined(SYBDBLIB)
+#if !defined(MSDBLIB)
 #define SYBDBLIB 1
-#endif
-#if defined(MSDBLIB) && defined(SYBDBLIB)
-#error MSDBLIB and SYBDBLIB cannot both be defined
 #endif
 
 #ifdef __cplusplus
@@ -1299,11 +1298,10 @@ install:
 	install -d -m 0755 $(DESTDIR)$(LIBDIR)
 	install -d -m 0755 $(DESTDIR)$(PREFIX)/include/libretds/
 	install -c -m 0555 libretds-config $(DESTDIR)$(PREFIX)/bin/
-	$(INSTALL_DATA) include/database.h $(DESTDIR)$(PREFIX)/include/libretds/
 	$(INSTALL_DATA) include/sybdb.h $(DESTDIR)$(PREFIX)/include/libretds/
-	$(INSTALL_DATA) include/sybdk.h $(DESTDIR)$(PREFIX)/include/libretds/
 	$(INSTALL_DATA) include/tds_sysdep_public.h $(DESTDIR)$(PREFIX)/include/libretds/
-	libtool --mode=install cp src/dkdblib/libretds.la $(DESTDIR)$(LIBDIR)/libretds.la
+	libtool --mode=install cp src/libretds/libretds.la $(DESTDIR)$(LIBDIR)/libretds.la
+	libtool --finish $(DESTDIR)$(LIBDIR)
 ' > Makefile
 
 echo "Creating src/Makefile"
