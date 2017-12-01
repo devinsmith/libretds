@@ -46,7 +46,6 @@
 #include <freetds/bytes.h>
 #include <freetds/string.h>
 #include <replacements.h>
-#include <sybfront.h>
 #include <sybdb.h>
 #include <syberror.h>
 #include <dblib.h>

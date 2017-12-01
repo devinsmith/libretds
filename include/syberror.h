@@ -17,10 +17,8 @@
  * Boston, MA 02111-1307, USA.
  */
 
-#ifndef SYBFRONT_h
-#define SYBFRONT_h
-
-#include "sybdb.h"
+#ifndef _syberror_h_
+#define _syberror_h_
 
 #ifdef __cplusplus
 extern "C"
@@ -30,10 +28,21 @@ extern "C"
 #endif
 #endif
 
-static const char rcsid_sybfront_h[] = "$Id: sybfront.h,v 1.3 2004-10-28 12:42:12 freddy77 Exp $";
-static const void *const no_unused_sybfront_h_warn[] = { rcsid_sybfront_h, no_unused_sybfront_h_warn };
+static const char rcsid_syberror_h[] = "$Id: syberror.h,v 1.4 2004-10-28 12:42:12 freddy77 Exp $";
+static const void *const no_unused_syberror_h_warn[] = { rcsid_syberror_h, no_unused_syberror_h_warn };
 
-
+/* severity levels, gleaned from google */
+#define EXINFO         1
+#define EXUSER         2
+#define EXNONFATAL     3
+#define EXCONVERSION   4
+#define EXSERVER       5
+#define EXTIME         6
+#define EXPROGRAM      7
+#define EXRESOURCE     8
+#define EXCOMM         9
+#define EXFATAL       10
+#define EXCONSISTENCY 11
 
 #ifdef __cplusplus
 #if 0
@@ -41,6 +50,5 @@ static const void *const no_unused_sybfront_h_warn[] = { rcsid_sybfront_h, no_un
 #endif
 }
 #endif
-
 
 #endif
