@@ -1,6 +1,7 @@
 # LibreTDS
 A fork of FreeTDS with changes that wont be accepted into mainline FreeTDS.
-These changes mostly break backwards compatibility.
+These changes mostly break backwards compatibility. FreeTDS' dblib library
+has been altered to be more useful for certain applications.
 
 # License
 LibreTDS is a fork of FreeTDS and uses the same license as that project.
