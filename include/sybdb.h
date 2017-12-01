@@ -880,6 +880,7 @@ RETCODE dbsettime(int seconds);
 void dbsetuserdata(DBPROCESS * dbproc, BYTE * ptr);
 RETCODE dbsetversion(DBINT version);
 
+const char *dblasterr(DBPROCESS *dbproc);
 int dbspid(DBPROCESS * dbproc);
 RETCODE dbspr1row(DBPROCESS * dbproc, char *buffer, DBINT buf_len);
 DBINT dbspr1rowlen(DBPROCESS * dbproc);

@@ -69,6 +69,62 @@ TEST_ATTRIBUTE(t29,TDS_NUMERIC,scale,DBNUMERIC,scale);
 TEST_ATTRIBUTE(t30,TDS_NUMERIC,array,DBNUMERIC,array);
 #endif
 
+/* Save last error */
+static void
+save_last_error(DBPROCESS *dbproc, DBINT msgno, int state, int sev,
+    const char *msg, const char *srvname, const char *proc, int line_num)
+{
+  if (dbproc == NULL)
+    return;
+
+  /*
+   * If the message was something other than informational, and
+   * the severity was greater than 0, then print information to
+   * stderr with a little pre-amble information.
+   */
+  if (msgno > 0 && sev > 0) {
+    char *database;
+    char *proc_msg = NULL;
+    char *line_msg = NULL;
+    char *db_msg = NULL;
+
+    free(dbproc->last_error_msg);
+
+    database = dbname(dbproc);
+
+    if (proc != NULL && *proc != '\0') {
+      if (asprintf(&proc_msg, ", Procedure '%s'", proc) < 0)
+        proc_msg = NULL;
+    }
+
+    if (line_num > 0) {
+      if (asprintf(&line_msg, ", Line %d", line_num) < 0)
+        line_msg = NULL;
+    }
+
+    if (database != NULL && *database != '\0') {
+      if (asprintf(&db_msg, "Database '%s'\n", database) < 0) {
+        db_msg = NULL;
+      }
+    }
+
+    if (asprintf(&dbproc->last_error_msg,
+        "Msg %d, Level %d, State %d\n"
+        "Server '%s'%s%s\n"
+        "%s%s", (int)msgno, sev,
+        state, srvname, proc_msg == NULL ? "" : proc_msg,
+        line_msg == NULL ? "" : line_msg,
+        db_msg == NULL ? "" : db_msg, msg) < 0) {
+      /* Oh well */
+      dbproc->last_error_msg = NULL;
+    }
+
+    free(proc_msg);
+    free(line_msg);
+    free(db_msg);
+  }
+}
+
 /*
  * The next 2 functions receive the info and error messages that come from the TDS layer.
  * The address of this function is passed to the TDS layer in dbinit().
@@ -83,6 +139,11 @@ _dblib_handle_info_message(const TDSCONTEXT * tds_ctx, TDSSOCKET * tds, TDSMESSA
 	tdsdump_log(TDS_DBG_FUNC, "_dblib_handle_info_message(%p, %p, %p)\n", tds_ctx, tds, msg);
 	tdsdump_log(TDS_DBG_FUNC, "msgno %d (sev: %d): \"%s\"\n", msg->msgno,
 	    msg->severity, msg->message);
+
+	/* Save text version of last error message, but mabye it's more useful to
+	 * save the TDSMESSAGE structure */
+	save_last_error(dbproc, msg->msgno, msg->state, msg->severity, msg->message,
+	    msg->server, msg->proc_name, msg->line_number);
 
 	/*
 	 * Check to see if the user supplied a function, else ignore the message. 

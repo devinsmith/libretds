@@ -7051,6 +7051,14 @@ dbsetavail(DBPROCESS * dbproc)
 	dbproc->avail_flag = TRUE;
 }
 
+const char *
+dblasterr(DBPROCESS *dbproc)
+{
+  if (dbproc == NULL)
+    return NULL;
+
+  return dbproc->last_error_msg;
+}
 
 /**
  * \ingroup dblib_core

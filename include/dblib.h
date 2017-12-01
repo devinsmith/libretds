@@ -137,6 +137,7 @@ struct tds_dblib_dbprocess
 	unsigned char *dbbuf;	/* is dynamic!                   */
 	int dbbufsz;
 	int command_state;
+	char *last_error_msg;
 	TDS_INT text_size;
 	TDS_INT text_sent;
 	DBTYPEINFO typeinfo;
