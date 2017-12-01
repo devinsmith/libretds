@@ -159,7 +159,7 @@
  * \section dblib DB-Library changes
  * A bit more complicated than CT-Library but not that much.
  * <ul>
- * <li>add type and binding type to \c include/sybdb.h
+ * <li>add type and binding type to \c include/libredb.h
  * <li>add NULL handling in \c dbgetnull, \c dbsetnull
  *    and \c default_null_representation in
  *    \c src/dblib/dblib.c

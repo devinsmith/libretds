@@ -45,7 +45,7 @@
 #include <freetds/convert.h>
 #include <freetds/string.h>
 #include <replacements.h>
-#include <sybdb.h>
+#include <libredb.h>
 #include <dblib.h>
 
 static void rpc_clear(DBREMOTE_PROC * rpc);

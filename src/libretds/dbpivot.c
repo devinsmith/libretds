@@ -44,8 +44,8 @@
 #include <freetds/convert.h>
 #include <freetds/string.h>
 #include <replacements.h>
-#include <sybdb.h>
-#include <syberror.h>
+#include <libredb.h>
+#include <libreerror.h>
 #include <dblib.h>
 
 #define TDS_FIND(k,b,c) tds_find(k, b, sizeof(b)/sizeof(b[0]), sizeof(b[0]), c)

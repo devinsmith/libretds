@@ -1294,7 +1294,7 @@ install:
 	install -d -m 0755 $(DESTDIR)$(LIBDIR)
 	install -d -m 0755 $(DESTDIR)$(PREFIX)/include/libretds/
 	install -c -m 0555 libretds-config $(DESTDIR)$(PREFIX)/bin/
-	$(INSTALL_DATA) include/sybdb.h $(DESTDIR)$(PREFIX)/include/libretds/
+	$(INSTALL_DATA) include/libredb.h $(DESTDIR)$(PREFIX)/include/libretds/
 	$(INSTALL_DATA) include/tds_sysdep_public.h $(DESTDIR)$(PREFIX)/include/libretds/
 	libtool --mode=install cp src/libretds/libretds.la $(DESTDIR)$(LIBDIR)/libretds.la
 	libtool --finish $(DESTDIR)$(LIBDIR)

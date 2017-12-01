@@ -46,8 +46,8 @@
 #include <freetds/bytes.h>
 #include <freetds/string.h>
 #include <replacements.h>
-#include <sybdb.h>
-#include <syberror.h>
+#include <libredb.h>
+#include <libreerror.h>
 #include <dblib.h>
 
 #define HOST_COL_CONV_ERROR 1

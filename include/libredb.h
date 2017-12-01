@@ -18,15 +18,15 @@
  * Boston, MA 02111-1307, USA.
  */
 
-/** \file ../include/sybdb.h
+/** \file ../include/libredb.h
  *  \brief Primary include file for db-lib applications.
  *  
  *  Declares macros, functions, enumerated types, and defined tokens 
  *  used by the db-lib API.
  */
 
-#ifndef _sybdb_h_
-#define _sybdb_h_
+#ifndef _libredb_h_
+#define _libredb_h_
 
 #include "tds_sysdep_public.h"
 

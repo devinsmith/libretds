@@ -54,8 +54,8 @@
 #include <freetds/thread.h>
 #include <freetds/convert.h>
 #include <replacements.h>
-#include <sybdb.h>
-#include <syberror.h>
+#include <libredb.h>
+#include <libreerror.h>
 #include <dblib.h>
 
 static RETCODE _dbresults(DBPROCESS * dbproc);
@@ -5628,7 +5628,7 @@ dblib_datecrack(DBPROCESS * dbproc, BOOL nano_precision, DBDATEREC * output, int
  * \remarks The members of \a di have different names, depending on whether \c --with-msdblib was configured.
  *
  * If DBPROCESS is NULL, dbdatecrack() uses the compiled in default
- * value of MSDBLIB as of when libsybdb was compiled, irrespective of its value when the
+ * value of MSDBLIB as of when libredb was compiled, irrespective of its value when the
  * application is compiled.  This can lead to incorrect results because Sybase and Microsoft use different
  * ranges -- [0,11] vs. [1,12] -- for the month.
  *

@@ -34,8 +34,8 @@
 
 #include <freetds/tds.h>
 #include <freetds/convert.h>
-#include <sybdb.h>
-#include <syberror.h>
+#include <libredb.h>
+#include <libreerror.h>
 #include <dblib.h>
 
 /*
